@@ -1,0 +1,61 @@
+{
+  "database": {
+    "type": "postgres",
+    "host": "${DB_HOST}",
+    "port": "${DB_PORT}",
+    "database": "${DB_NAME}",
+    "username": "${DB_USER}",
+    "password": "${DB_PASSWORD}",
+    "schema": "public"
+  },
+  "n8n": {
+    "port": 5678,
+    "host": "0.0.0.0",
+    "webhook_url": "${N8N_WEBHOOK_URL}",
+    "basic_auth": {
+      "active": true,
+      "user": "${N8N_BASIC_AUTH_USER}",
+      "password": "${N8N_BASIC_AUTH_PASSWORD}"
+    }
+  },
+  "workflow": {
+    "name": "embargo-search-workflow",
+    "webhook_path": "buscar-embargo",
+    "timeout": 30000,
+    "max_execution_time": 60000
+  },
+  "security": {
+    "cors": {
+      "enabled": true,
+      "origin": ["http://localhost:3000", "https://yourdomain.com"],
+      "methods": ["GET", "POST", "PUT", "DELETE"],
+      "allowedHeaders": ["Content-Type", "Authorization"]
+    },
+    "rate_limiting": {
+      "enabled": true,
+      "window_ms": 900000,
+      "max_requests": 100,
+      "message": "Demasiadas solicitudes, intente nuevamente en 15 minutos"
+    }
+  },
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "file": "/var/log/n8n/embargo-agent.log",
+    "rotation": {
+      "max_files": 5,
+      "max_size": "10m"
+    }
+  },
+  "monitoring": {
+    "health_check": {
+      "enabled": true,
+      "path": "/health",
+      "interval": 30000
+    },
+    "metrics": {
+      "enabled": true,
+      "path": "/metrics"
+    }
+  }
+}

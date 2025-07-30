@@ -1,0 +1,603 @@
+{
+  "name": "Búsqueda de Embargos",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "buscar-embargo",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f0b42e00-7b57-4b65-9d1e-4f8c0e1a2b3c",
+      "name": "Webhook - Recibir Búsqueda",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validar y procesar datos de entrada\nconst body = $input.first().json.body;\n\n// Validar que se envíen los campos necesarios\nif (!body.tipo_busqueda || !body.valor) {\n  return [{\n    json: {\n      error: true,\n      mensaje: \"Faltan campos requeridos: tipo_busqueda y valor\",\n      codigo: \"INVALID_INPUT\"\n    }\n  }];\n}\n\n// Validar tipo de búsqueda\nif (!['documento', 'nombre'].includes(body.tipo_busqueda)) {\n  return [{\n    json: {\n      error: true,\n      mensaje: \"tipo_busqueda debe ser 'documento' o 'nombre'\",\n      codigo: \"INVALID_SEARCH_TYPE\"\n    }\n  }];\n}\n\n// Limpiar y normalizar el valor de búsqueda\nlet valorLimpio = body.valor.toString().trim();\n\nif (body.tipo_busqueda === 'documento') {\n  // Remover caracteres no numéricos para documentos\n  valorLimpio = valorLimpio.replace(/[^0-9]/g, '');\n  \n  if (valorLimpio.length < 6) {\n    return [{\n      json: {\n        error: true,\n        mensaje: \"El documento debe tener al menos 6 dígitos\",\n        codigo: \"INVALID_DOCUMENT\"\n      }\n    }];\n  }\n} else if (body.tipo_busqueda === 'nombre') {\n  // Validar longitud mínima para nombres\n  if (valorLimpio.length < 3) {\n    return [{\n      json: {\n        error: true,\n        mensaje: \"El nombre debe tener al menos 3 caracteres\",\n        codigo: \"INVALID_NAME\"\n      }\n    }];\n  }\n}\n\n// Obtener información adicional de la request\nconst headers = $input.first().json.headers;\nconst ipOrigen = headers['x-forwarded-for'] || headers['x-real-ip'] || 'unknown';\nconst userAgent = headers['user-agent'] || 'unknown';\n\nreturn [{\n  json: {\n    tipo_busqueda: body.tipo_busqueda,\n    valor: valorLimpio,\n    ip_origen: ipOrigen,\n    user_agent: userAgent,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Validar Entrada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-f6g7-8901-bcde-f23456789012",
+      "name": "¿Hay Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "c3d4e5f6-g7h8-9012-cdef-345678901234",
+      "name": "Responder Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        680,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.tipo_busqueda }}",
+              "rightValue": "documento",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d4e5f6g7-h8i9-0123-defg-456789012345",
+      "name": "¿Buscar por Documento?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  p.id as persona_id,\n  CONCAT(p.nombre, ' ', p.apellido) as nombre_completo,\n  p.documento,\n  p.tipo_documento,\n  p.telefono,\n  p.email,\n  p.ciudad\nFROM personas p \nWHERE p.documento = $1 AND p.estado = 'ACTIVO'",
+        "additionalFields": {
+          "queryParameters": {
+            "parameters": [
+              {
+                "parameter": "={{ $json.valor }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "e5f6g7h8-i9j0-1234-efgh-567890123456",
+      "name": "Buscar por Documento",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        900,
+        180
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-embargos",
+          "name": "PostgreSQL Embargos"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM buscar_por_nombre($1)",
+        "additionalFields": {
+          "queryParameters": {
+            "parameters": [
+              {
+                "parameter": "={{ $json.valor }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "f6g7h8i9-j0k1-2345-fghi-678901234567",
+      "name": "Buscar por Nombre",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        900,
+        420
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-embargos",
+          "name": "PostgreSQL Embargos"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Procesar resultados de búsqueda\nconst items = $input.all();\nlet personas = [];\nlet busquedaInfo = {};\n\n// Obtener información de búsqueda del primer item\nif (items.length > 0) {\n  const firstItem = items[0].json;\n  if (firstItem.tipo_busqueda) {\n    busquedaInfo = {\n      tipo_busqueda: firstItem.tipo_busqueda,\n      valor: firstItem.valor,\n      ip_origen: firstItem.ip_origen,\n      timestamp: firstItem.timestamp\n    };\n  }\n}\n\n// Procesar resultados de base de datos\nfor (const item of items) {\n  if (item.json.persona_id) {\n    personas.push({\n      id: item.json.persona_id,\n      nombre: item.json.nombre_completo,\n      documento: item.json.documento,\n      tipo_documento: item.json.tipo_documento,\n      telefono: item.json.telefono || null,\n      email: item.json.email || null,\n      ciudad: item.json.ciudad || null\n    });\n  }\n}\n\n// Si no se encontraron personas\nif (personas.length === 0) {\n  return [{\n    json: {\n      encontrado: false,\n      mensaje: \"No se encontraron registros con los criterios de búsqueda\",\n      busqueda: busquedaInfo,\n      personas: [],\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// Si se encontró exactamente una persona\nif (personas.length === 1) {\n  return [{\n    json: {\n      encontrado: true,\n      persona: personas[0],\n      busqueda: busquedaInfo,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// Si se encontraron múltiples personas (solo para búsqueda por nombre)\nreturn [{\n  json: {\n    encontrado: true,\n    multiple: true,\n    mensaje: `Se encontraron ${personas.length} personas que coinciden con la búsqueda`,\n    personas: personas,\n    busqueda: busquedaInfo,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "g7h8i9j0-k1l2-3456-ghij-789012345678",
+      "name": "Procesar Resultados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.encontrado }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            },
+            {
+              "id": "condition2",
+              "leftValue": "={{ $json.multiple }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEqual"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "h8i9j0k1-l2m3-4567-hijk-890123456789",
+      "name": "¿Persona Única Encontrada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  e.id as embargo_id,\n  e.monto,\n  e.monto_original,\n  e.fecha_inicio,\n  e.fecha_vencimiento,\n  e.entidad,\n  e.tipo_embargo,\n  e.descripcion,\n  e.numero_proceso,\n  e.juzgado\nFROM embargos e\nWHERE e.persona_id = $1 AND e.estado = 'ACTIVO'\nORDER BY e.fecha_inicio DESC",
+        "additionalFields": {
+          "queryParameters": {
+            "parameters": [
+              {
+                "parameter": "={{ $json.persona.id }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "i9j0k1l2-m3n4-5678-ijkl-901234567890",
+      "name": "Buscar Embargos",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1340,
+        180
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-embargos",
+          "name": "PostgreSQL Embargos"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combinar información de persona y embargos\nconst items = $input.all();\nlet personaInfo = null;\nlet embargos = [];\n\n// Buscar la información de la persona\nfor (const item of items) {\n  if (item.json.persona) {\n    personaInfo = item.json.persona;\n    break;\n  }\n}\n\n// Recopilar embargos\nfor (const item of items) {\n  if (item.json.embargo_id) {\n    embargos.push({\n      id: item.json.embargo_id,\n      monto: parseFloat(item.json.monto),\n      monto_original: parseFloat(item.json.monto_original),\n      fecha_inicio: item.json.fecha_inicio,\n      fecha_vencimiento: item.json.fecha_vencimiento,\n      entidad: item.json.entidad,\n      tipo: item.json.tipo_embargo,\n      descripcion: item.json.descripcion,\n      numero_proceso: item.json.numero_proceso,\n      juzgado: item.json.juzgado\n    });\n  }\n}\n\n// Calcular totales\nconst montoTotalEmbargos = embargos.reduce((total, embargo) => total + embargo.monto, 0);\nconst tieneEmbargos = embargos.length > 0;\n\nreturn [{\n  json: {\n    encontrado: true,\n    persona: personaInfo,\n    embargo: {\n      activo: tieneEmbargos,\n      cantidad: embargos.length,\n      monto_total: montoTotalEmbargos,\n      embargos: embargos\n    },\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "j0k1l2m3-n4o5-6789-jklm-012345678901",
+      "name": "Combinar Persona y Embargos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.embargo.activo }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "k1l2m3n4-o5p6-7890-klmn-123456789012",
+      "name": "¿Tiene Embargos?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  ap.id,\n  ap.embargo_id,\n  ap.tipo,\n  ap.descripcion,\n  ap.monto_inicial,\n  ap.monto_final,\n  ap.cuota_mensual,\n  ap.numero_cuotas,\n  ap.descuento_porcentaje,\n  ap.fecha_limite\nFROM alternativas_pago ap\nWHERE ap.embargo_id = ANY($1::int[]) AND ap.activo = true\nORDER BY ap.tipo, ap.monto_final ASC",
+        "additionalFields": {
+          "queryParameters": {
+            "parameters": [
+              {
+                "parameter": "={{ $json.embargo.embargos.map(e => e.id) }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "l2m3n4o5-p6q7-8901-lmno-234567890123",
+      "name": "Buscar Alternativas",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1780,
+        180
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-embargos",
+          "name": "PostgreSQL Embargos"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combinar información con alternativas\nconst items = $input.all();\nlet infoCompleta = null;\nlet alternativas = [];\n\n// Buscar la información principal\nfor (const item of items) {\n  if (item.json.persona && item.json.embargo) {\n    infoCompleta = item.json;\n    break;\n  }\n}\n\n// Recopilar alternativas\nfor (const item of items) {\n  if (item.json.embargo_id && item.json.tipo) {\n    alternativas.push({\n      id: item.json.id,\n      embargo_id: item.json.embargo_id,\n      tipo: item.json.tipo,\n      descripcion: item.json.descripcion,\n      monto_inicial: item.json.monto_inicial ? parseFloat(item.json.monto_inicial) : null,\n      monto_final: item.json.monto_final ? parseFloat(item.json.monto_final) : null,\n      cuota_mensual: item.json.cuota_mensual ? parseFloat(item.json.cuota_mensual) : null,\n      numero_cuotas: item.json.numero_cuotas,\n      descuento_porcentaje: item.json.descuento_porcentaje ? parseFloat(item.json.descuento_porcentaje) : null,\n      fecha_limite: item.json.fecha_limite\n    });\n  }\n}\n\n// Generar recomendaciones automáticas si no hay alternativas\nif (alternativas.length === 0 && infoCompleta.embargo.activo) {\n  const montoTotal = infoCompleta.embargo.monto_total;\n  \n  alternativas = [\n    {\n      tipo: \"plan_pagos_12\",\n      descripcion: \"Plan de pagos a 12 meses\",\n      monto_inicial: Math.round(montoTotal * 0.1),\n      monto_final: montoTotal,\n      cuota_mensual: Math.round(montoTotal / 12),\n      numero_cuotas: 12,\n      descuento_porcentaje: 0,\n      fecha_limite: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]\n    },\n    {\n      tipo: \"descuento_pronto_pago\",\n      descripcion: \"Descuento por pronto pago (15%)\",\n      monto_inicial: null,\n      monto_final: Math.round(montoTotal * 0.85),\n      cuota_mensual: null,\n      numero_cuotas: null,\n      descuento_porcentaje: 15,\n      fecha_limite: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]\n    }\n  ];\n}\n\nreturn [{\n  json: {\n    ...infoCompleta,\n    alternativas: alternativas,\n    resumen: {\n      tiene_embargos: infoCompleta.embargo.activo,\n      monto_total: infoCompleta.embargo.monto_total,\n      cantidad_embargos: infoCompleta.embargo.cantidad,\n      alternativas_disponibles: alternativas.length,\n      mejor_descuento: alternativas.reduce((max, alt) => \n        alt.descuento_porcentaje > max ? alt.descuento_porcentaje : max, 0\n      )\n    }\n  }\n}];"
+      },
+      "id": "m3n4o5p6-q7r8-9012-mnop-345678901234",
+      "name": "Preparar Respuesta Completa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO historial_busquedas (tipo_busqueda, valor_buscado, resultado_encontrado, persona_id, ip_origen, user_agent)\nVALUES ($1, $2, $3, $4, $5, $6)",
+        "additionalFields": {
+          "queryParameters": {
+            "parameters": [
+              {
+                "parameter": "={{ $json.busqueda?.tipo_busqueda || 'unknown' }}"
+              },
+              {
+                "parameter": "={{ $json.busqueda?.valor || $json.valor || 'unknown' }}"
+              },
+              {
+                "parameter": "={{ $json.encontrado }}"
+              },
+              {
+                "parameter": "={{ $json.persona?.id || null }}"
+              },
+              {
+                "parameter": "={{ $json.busqueda?.ip_origen || 'unknown' }}"
+              },
+              {
+                "parameter": "={{ $json.busqueda?.user_agent || 'unknown' }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "n4o5p6q7-r8s9-0123-nopq-456789012345",
+      "name": "Registrar Búsqueda",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2220,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-embargos",
+          "name": "PostgreSQL Embargos"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "o5p6q7r8-s9t0-1234-opqr-567890123456",
+      "name": "Responder Resultado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2440,
+        300
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Recibir Búsqueda": {
+      "main": [
+        [
+          {
+            "node": "Validar Entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Entrada": {
+      "main": [
+        [
+          {
+            "node": "¿Hay Error?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay Error?": {
+      "main": [
+        [
+          {
+            "node": "Responder Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "¿Buscar por Documento?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Buscar por Documento?": {
+      "main": [
+        [
+          {
+            "node": "Buscar por Documento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar por Nombre",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar por Documento": {
+      "main": [
+        [
+          {
+            "node": "Procesar Resultados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar por Nombre": {
+      "main": [
+        [
+          {
+            "node": "Procesar Resultados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar Resultados": {
+      "main": [
+        [
+          {
+            "node": "¿Persona Única Encontrada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Persona Única Encontrada?": {
+      "main": [
+        [
+          {
+            "node": "Buscar Embargos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar Búsqueda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Embargos": {
+      "main": [
+        [
+          {
+            "node": "Combinar Persona y Embargos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combinar Persona y Embargos": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene Embargos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene Embargos?": {
+      "main": [
+        [
+          {
+            "node": "Buscar Alternativas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar Búsqueda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Alternativas": {
+      "main": [
+        [
+          {
+            "node": "Preparar Respuesta Completa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Respuesta Completa": {
+      "main": [
+        [
+          {
+            "node": "Registrar Búsqueda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar Búsqueda": {
+      "main": [
+        [
+          {
+            "node": "Responder Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "embargo-search-instance"
+  },
+  "id": "embargo-search-workflow",
+  "tags": [
+    "embargos",
+    "búsqueda",
+    "legal",
+    "base-datos"
+  ]
+}
